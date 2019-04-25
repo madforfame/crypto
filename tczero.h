@@ -1,3 +1,5 @@
+#include <stdint.h>
+
 #ifndef __TCZERO_H
 #define __TCZERO_H
 
