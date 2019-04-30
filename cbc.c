@@ -10,9 +10,11 @@
 #include <stdlib.h>
 
 uint64_t myRandomData;
+uint32_t birthday_array[32];
+uint16_t arraySize;
+uint64_t iv;
 
 size_t cbc_enc(uint16_t key[4], uint8_t *pt, uint8_t *ct, size_t ptlen){
-	uint64_t iv=myRandomData;
 	uint8_t plainT[4];
 	uint8_t cryptT[4];
 
@@ -48,7 +50,6 @@ size_t cbc_enc(uint16_t key[4], uint8_t *pt, uint8_t *ct, size_t ptlen){
 }
 
 size_t cbc_dec(uint16_t key[4], uint8_t *ct, uint8_t *pt, size_t ctlen) {
-	uint64_t iv=myRandomData;
 	uint8_t plainT[4];
 	uint8_t cryptT[4];
 
@@ -77,6 +78,30 @@ size_t cbc_dec(uint16_t key[4], uint8_t *ct, uint8_t *pt, size_t ctlen) {
 	return ctlen;
 }
 
+uint64_t attack(uint8_t *ct, size_t ctlen) {
+	uint8_t cryptT[4];
+	uint32_t xored;
+	for (int i = 0 ; i < ctlen ; i++) {
+		for (int j = 0 ; j < 4 ; j++) {
+			cryptT[j] = ct[i*4+j];
+		}
+		for (int j = 0 ; j < arraySize ; j++) {
+			for (int k = j + 1 ; k < arraySize ; k++) {
+				if (birthday_array[j] == birthday_array[k]) {
+					printf("Collision found\n");
+					xored = birthday_array[j-1] ^ birthday_array[k-1];
+					printf("XOR : %" PRIu32, xored);
+					printf("\n");
+					return 1;
+				}
+			}	
+		}
+		birthday_array[arraySize] = *(uint32_t *) cryptT;
+		arraySize += 1;
+	}
+	return 0;
+}
+
 void rand_data(int f){
 	ssize_t result = read(f, &myRandomData, sizeof myRandomData);
 	if (result < 0){
@@ -90,32 +115,64 @@ int main(){
 	uint64_t pt[2];
 	uint64_t ptdec[2];
 	uint64_t ct[2];
+	arraySize = 0;
+	int nbAttacks = 0;
 
 	if(rData >= 0)
 	{
+		//Generate random key
 	    rand_data(rData);
 	    key[0]=myRandomData;
 
 	    rand_data(rData);
 	    key[1]=myRandomData;
 
+	    //Generate random plain text
 	    rand_data(rData);
 	    pt[0] = myRandomData;
 	    rand_data(rData);
-	    pt[1] = myRandomData;
-
-	    printf("%" PRIu64 "\n", key[0]);
-	    printf("%" PRIu64 "\n", key[1]);
-	    
-
-	    rand_data(rData);
+	    pt[1] = myRandomData;    
 
 	    size_t ptlen=HALF_BLOCK_SIZE*2/8;
 	    size_t ctlen = HALF_BLOCK_SIZE*2/8;
 	    
+	    //Encryption
+	    //Test for non-deterministic encryption
+	    printf("Test for non-deterministic encryption\n");
+	    //IV Generation
+	    printf("First encryption :\n");
+	    rand_data(rData);
+	    iv = myRandomData;
 	    cbc_enc((uint16_t *)key, (uint8_t *)pt, (uint8_t *)ct, ptlen);
+	    printf("\n");
+	    //IV Generation
+	    printf("Second encryption :\n");
+	    rand_data(rData);
+	    iv = myRandomData;
+	    cbc_enc((uint16_t *)key, (uint8_t *)pt, (uint8_t *)ct, ptlen);
+	    printf("\n");
+	    //New IV
+	    printf("Third encryption :\n");
+	    rand_data(rData);
+	    iv = myRandomData;
+	    cbc_enc((uint16_t *)key, (uint8_t *)pt, (uint8_t *)ct, ptlen);
+	    printf("\n");
+	    //Decryption
+	    printf("Decryption :\n");
 	    cbc_dec((uint16_t *)key, (uint8_t *)ct, (uint8_t *)ptdec, ctlen);
 
+	    //Attack
+	    printf("Attack :\n");
+	    while (!attack((uint8_t *)ct, ctlen)) {
+	    	rand_data(rData);
+		    pt[0] = myRandomData;
+		    rand_data(rData);
+		    pt[1] = myRandomData;
+		    cbc_enc((uint16_t *)key, (uint8_t *)pt, (uint8_t *)ct, ptlen);
+		    arraySize = 0;
+		    nbAttacks += 1;
+		    printf("%i\n", nbAttacks);
+	    }
 
 	}else{
 		printf("Error");
